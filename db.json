@@ -1,0 +1,12 @@
+
+{
+  "users": [
+    {
+      "username": "jdog",
+      "password": "rich",
+      "balance": 10,
+      "deposits": [],
+      "withdraws": []
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "jwt-wallet-backend",
+  "version": "1.0.0",
+  "description": "A simple JWT-based wallet backend for arcade games",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "dotenv": "^16.3.1"
+  }
+}
