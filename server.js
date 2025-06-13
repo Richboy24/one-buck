@@ -1,8 +1,6 @@
-// server.js — JWT backend with global /spin route
-const path = require('path');
-
 const express = require('express');
 const fs = require('fs');
+const path = require('path');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -10,13 +8,12 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'yoursecretkey';
 
 app.use(cors());
 app.use(bodyParser.json());
 
-let isSpinning = false; // basic lock to prevent race conditions
-
+// Helpers
 function loadDB() {
   return JSON.parse(fs.readFileSync('db.json', 'utf8'));
 }
@@ -25,6 +22,7 @@ function saveDB(data) {
   fs.writeFileSync('db.json', JSON.stringify(data, null, 2));
 }
 
+// Middleware to protect routes
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -37,6 +35,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
+// Auth & wallet routes
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
   const db = loadDB();
@@ -54,47 +53,100 @@ app.get('/wallet', authenticateToken, (req, res) => {
   res.json({ balance: user.balance });
 });
 
-app.post('/spin', authenticateToken, (req, res) => {
-  if (isSpinning) return res.status(429).json({ message: 'Please wait...' });
-  isSpinning = true;
+app.post('/deposit-request', authenticateToken, (req, res) => {
+  const { amount, method } = req.body;
+  const db = loadDB();
+  const user = db.users.find(u => u.username === req.user.username);
+  if (!user) return res.sendStatus(404);
+  user.deposits.push({ amount, method, status: 'pending' });
+  saveDB(db);
+  res.json({ message: 'Deposit request submitted' });
+});
 
-  try {
-    const db = loadDB();
-    const user = db.users.find(u => u.username === req.user.username);
-    if (!user || user.balance < 1) {
-      isSpinning = false;
-      return res.status(400).json({ message: 'Insufficient balance' });
-    }
+app.post('/withdraw-request', authenticateToken, (req, res) => {
+  const { amount, method } = req.body;
+  const db = loadDB();
+  const user = db.users.find(u => u.username === req.user.username);
+  if (!user || user.balance < amount) return res.status(400).json({ message: 'Insufficient funds' });
+  user.balance -= amount;
+  user.withdraws.push({ amount, method, status: 'pending' });
+  saveDB(db);
+  res.json({ message: 'Withdrawal requested', balance: user.balance });
+});
 
-    user.balance -= 1;
-    db.globalSpinCount = (db.globalSpinCount || 0) + 1;
+app.post('/play', authenticateToken, (req, res) => {
+  const db = loadDB();
+  const user = db.users.find(u => u.username === req.user.username);
+  if (!user || user.balance < 1) return res.status(400).json({ message: 'Insufficient balance' });
+  user.balance -= 1;
+  saveDB(db);
+  res.json({ message: 'Play processed', balance: user.balance });
+});
 
-    let message = 'Try again';
-    let won = false;
+app.post('/win', authenticateToken, (req, res) => {
+  const { amount } = req.body;
+  const db = loadDB();
+  const user = db.users.find(u => u.username === req.user.username);
+  if (!user) return res.sendStatus(404);
+  user.balance += amount;
+  saveDB(db);
+  res.json({ message: 'Winnings added', balance: user.balance });
+});
 
-    if (db.globalSpinCount % 11 === 0) {
-      user.balance += 8;
-      message = 'You won $8!';
-      won = true;
-    }
-
-    saveDB(db);
-    res.json({ message, won, balance: user.balance });
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  } finally {
-    isSpinning = false;
+// Admin login (simple password check)
+app.post('/admin-login', (req, res) => {
+  const { password } = req.body;
+  if (password === 'amin24') {
+    res.json({ success: true });
+  } else {
+    res.status(403).json({ success: false, message: 'Wrong password' });
   }
 });
+
+// Admin: get all users
 app.get('/admin-users', (req, res) => {
   const db = loadDB();
   res.json(db.users);
 });
+
+// Admin: adjust balance
+app.post('/admin-adjust', (req, res) => {
+  const { username, amount } = req.body;
+  const db = loadDB();
+  const user = db.users.find(u => u.username === username);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+
+  user.balance += amount;
+  if (user.balance < 0) user.balance = 0;
+  saveDB(db);
+  res.json({ message: `Balance updated. New balance: $${user.balance}` });
+});
+
+// Admin: approve deposit
+app.post('/admin-approve', (req, res) => {
+  const { username, index } = req.body;
+  const db = loadDB();
+  const user = db.users.find(u => u.username === username);
+  if (!user || !user.deposits[index]) return res.status(400).json({ message: 'Invalid request' });
+
+  const deposit = user.deposits[index];
+  if (deposit.status === 'approved') {
+    return res.status(400).json({ message: 'Already approved' });
+  }
+
+  deposit.status = 'approved';
+  user.balance += deposit.amount;
+  saveDB(db);
+
+  res.json({ message: 'Deposit approved and balance updated.' });
+});
+
+// Serve admin panel HTML
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'admin.html'));
 });
 
-
+// Start server
 app.listen(PORT, () => {
-  console.log(`JWT Wallet Backend running on port ${PORT}`);
+  console.log(`✅ JWT Wallet Backend running on port ${PORT}`);
 });
