@@ -85,6 +85,11 @@ app.post('/spin', authenticateToken, (req, res) => {
     isSpinning = false;
   }
 });
+app.get('/admin-users', (req, res) => {
+  const db = loadDB();
+  res.json(db.users);
+});
+
 
 app.listen(PORT, () => {
   console.log(`JWT Wallet Backend running on port ${PORT}`);
