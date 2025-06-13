@@ -90,6 +90,9 @@ app.get('/admin-users', (req, res) => {
   const db = loadDB();
   res.json(db.users);
 });
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'admin.html'));
+});
 
 
 app.listen(PORT, () => {
