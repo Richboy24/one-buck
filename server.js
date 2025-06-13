@@ -78,9 +78,15 @@ app.post('/play', authenticateToken, (req, res) => {
   const db = loadDB();
   const user = db.users.find(u => u.username === req.user.username);
   if (!user || user.balance < 1) return res.status(400).json({ message: 'Insufficient balance' });
+
   user.balance -= 1;
+
+  // 11th spin logic
+  db.totalSpins = (db.totalSpins || 0) + 1;
+  const isWinner = db.totalSpins % 11 === 0;
+
   saveDB(db);
-  res.json({ message: 'Play processed', balance: user.balance });
+  res.json({ message: 'Play processed', balance: user.balance, win: isWinner });
 });
 
 app.post('/win', authenticateToken, (req, res) => {
@@ -148,5 +154,5 @@ app.get('/admin', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`✅ JWT Wallet Backend running on port ${PORT}`);
+  console.log(`✅ JWT Wallet Backend with 11th Spin Win Logic running on port ${PORT}`);
 });
