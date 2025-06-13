@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Panel</title>
+  <style>
+    body { background: #111; color: #fff; font-family: Arial; padding: 20px; }
+    h1 { color: #0ff; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; border: 1px solid #444; text-align: left; }
+    th { background-color: #222; }
+    button {
+      background: #0ff;
+      color: #000;
+      border: none;
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    input[type="number"], input[type="password"] {
+      width: 80px;
+      padding: 5px;
+      margin-right: 6px;
+    }
+    #login-container {
+      text-align: center;
+      margin-top: 100px;
+    }
+  </style>
+</head>
+<body>
+  <div id="login-container">
+    <h2>🔐 Admin Login</h2>
+    <input type="password" id="admin-pass" placeholder="Enter password" />
+    <button onclick="adminLogin()">Login</button>
+    <p id="login-msg" style="color: red;"></p>
+  </div>
+
+  <div id="admin-panel" style="display: none;">
+    <h1>Admin Panel</h1>
+    <button onclick="fetchUsers()">🔄 Refresh</button>
+    <table id="user-table">
+      <thead>
+        <tr><th>Username</th><th>Balance</th><th>Deposits</th><th>Withdraws</th><th>Actions</th><th>Pending Deposits</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function adminLogin() {
+      const pass = document.getElementById('admin-pass').value;
+      const res = await fetch('/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pass })
+      });
+
+      if (res.ok) {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('admin-panel').style.display = 'block';
+        fetchUsers();
+      } else {
+        document.getElementById('login-msg').innerText = 'Incorrect password';
+      }
+    }
+
+    async function fetchUsers() {
+      const res = await fetch('/admin-users');
+      const users = await res.json();
+      const tbody = document.querySelector('#user-table tbody');
+      tbody.innerHTML = '';
+
+      users.forEach(user => {
+        const pendingDeposits = user.deposits
+          .map((d, i) => {
+            if (d.status === 'pending') {
+              return `<div>$${d.amount} via ${d.method} <button onclick="approveDeposit('${user.username}', ${i})">Approve</button></div>`;
+            } else {
+              return '';
+            }
+          })
+          .join('');
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${user.username}</td>
+          <td>$${user.balance}</td>
+          <td>${user.deposits.length}</td>
+          <td>${user.withdraws.length}</td>
+          <td>
+            <input type="number" id="amount-${user.username}" value="1" min="1" />
+            <button onclick="adjustBalance('${user.username}')">Add Funds</button>
+          </td>
+          <td>${pendingDeposits || 'None'}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    async function adjustBalance(username) {
+      const input = document.getElementById(`amount-${username}`);
+      const amount = parseInt(input.value);
+      if (!amount || amount < 1) return alert("Enter a valid amount");
+
+      const res = await fetch('/admin-adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, amount })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      fetchUsers();
+    }
+
+    async function approveDeposit(username, index) {
+      const res = await fetch('/admin-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, index })
+      });
+
+      const data = await res.json();
+      alert(data.message);
+      fetchUsers();
+    }
+  </script>
+</body>
+</html>
