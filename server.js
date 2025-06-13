@@ -1,4 +1,5 @@
 // server.js — JWT backend with global /spin route
+const path = require('path');
 
 const express = require('express');
 const fs = require('fs');
