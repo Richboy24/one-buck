@@ -1,3 +1,4 @@
+// server.js — JWT backend with global /spin route
 
 const express = require('express');
 const fs = require('fs');
@@ -12,6 +13,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 app.use(cors());
 app.use(bodyParser.json());
+
+let isSpinning = false; // basic lock to prevent race conditions
 
 function loadDB() {
   return JSON.parse(fs.readFileSync('db.json', 'utf8'));
@@ -50,44 +53,37 @@ app.get('/wallet', authenticateToken, (req, res) => {
   res.json({ balance: user.balance });
 });
 
-app.post('/deposit-request', authenticateToken, (req, res) => {
-  const { amount, method } = req.body;
-  const db = loadDB();
-  const user = db.users.find(u => u.username === req.user.username);
-  if (!user) return res.sendStatus(404);
-  user.deposits.push({ amount, method, status: "pending" });
-  saveDB(db);
-  res.json({ message: "Deposit request submitted" });
-});
+app.post('/spin', authenticateToken, (req, res) => {
+  if (isSpinning) return res.status(429).json({ message: 'Please wait...' });
+  isSpinning = true;
 
-app.post('/play', authenticateToken, (req, res) => {
-  const db = loadDB();
-  const user = db.users.find(u => u.username === req.user.username);
-  if (!user || user.balance < 1) return res.status(400).json({ message: "Insufficient balance" });
-  user.balance -= 1;
-  saveDB(db);
-  res.json({ message: "Play processed", balance: user.balance });
-});
+  try {
+    const db = loadDB();
+    const user = db.users.find(u => u.username === req.user.username);
+    if (!user || user.balance < 1) {
+      isSpinning = false;
+      return res.status(400).json({ message: 'Insufficient balance' });
+    }
 
-app.post('/win', authenticateToken, (req, res) => {
-  const { amount } = req.body;
-  const db = loadDB();
-  const user = db.users.find(u => u.username === req.user.username);
-  if (!user) return res.sendStatus(404);
-  user.balance += amount;
-  saveDB(db);
-  res.json({ message: "Winnings added", balance: user.balance });
-});
+    user.balance -= 1;
+    db.globalSpinCount = (db.globalSpinCount || 0) + 1;
 
-app.post('/withdraw-request', authenticateToken, (req, res) => {
-  const { amount, method } = req.body;
-  const db = loadDB();
-  const user = db.users.find(u => u.username === req.user.username);
-  if (!user || user.balance < amount) return res.status(400).json({ message: "Insufficient funds" });
-  user.balance -= amount;
-  user.withdraws.push({ amount, method, status: "pending" });
-  saveDB(db);
-  res.json({ message: "Withdrawal requested", balance: user.balance });
+    let message = 'Try again';
+    let won = false;
+
+    if (db.globalSpinCount % 11 === 0) {
+      user.balance += 8;
+      message = 'You won $8!';
+      won = true;
+    }
+
+    saveDB(db);
+    res.json({ message, won, balance: user.balance });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  } finally {
+    isSpinning = false;
+  }
 });
 
 app.listen(PORT, () => {
